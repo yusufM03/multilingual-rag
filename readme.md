@@ -1,8 +1,53 @@
 # Multilingual RAG
 
-A **multilingual Retrieval-Augmented Generation (RAG)** system for Arabic and English, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
+A **multilingual Retrieval-Augmented Generation (RAG)** system for **Arabic and English**, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
 
 Supports **Streamlit** deployment for an interactive web interface.
+
+---
+
+## 🏗 Architecture Overview
+
+The **Multilingual RAG System** is designed for **Arabic and English document understanding**.
+It separates **document processing, storage, and querying** into clear layers to ensure **scalability, multilingual support, and high-speed retrieval**.
+
+![Architecture Overview](docs/overview.png)
+
+### **1. Document Ingestion & Extraction**
+
+* Converts raw PDFs/DOCs into structured text blocks with metadata.
+* Supports **complex layouts** (tables, multi-column text, footnotes).
+* Automatically detects **Arabic (RTL)** vs. **English (LTR)** content.
+* Outputs **clean, chunked text** ready for embedding.
+
+### **2. Embedding & Vector Storage**
+
+* Converts text chunks into **multilingual semantic embeddings**.
+* Stores vectors in **Qdrant Cloud** with:
+
+  * **Language-specific collections** (Arabic / English)
+  * **High-speed vector similarity search**
+  * **Cloud scalability for large datasets**
+
+### **3. Query Processing & Retrieval**
+
+* Detects query language automatically.
+* Retrieves **top semantic matches** from the relevant collection.
+* Aggregates context for accurate, language-specific responses.
+
+### **4. RAG Generation Layer**
+
+* Powered by **Groq-accelerated Llama models**.
+* Produces **multilingual answers** enriched with:
+
+  * **Contextual reasoning**
+  * **Source citations** (page numbers & document names)
+
+### **5. User Interface & Deployment**
+
+* **Streamlit web app** for interactive queries and document uploads.
+* **RTL support** for Arabic UI.
+* **Streamlit Cloud deployment** with secure secrets management.
 
 ---
 
@@ -43,7 +88,7 @@ pip install -r requirements.txt
 
 Create a `.streamlit/secrets.toml` file in the **project root**:
 
-```env
+```toml
 # Qdrant Cloud Configuration
 qdrant_url=https://your-cluster-url.qdrant.tech:6333
 qdrant_api_key=your-qdrant-api-key
@@ -87,6 +132,7 @@ llama_cloud_api_key=llx_your-llamacloud-api-key
 yusufm03-multilingual-rag/
 ├── requirements.txt
 ├── docs/
+│   └── architecture_overview.png   # Architecture diagram
 ├── research/
 │   ├── ChromDb_local/
 │   │   ├── instructions.md
@@ -129,4 +175,3 @@ QDRANT_URL = "https://xxxx.qdrant.tech:6333"
 QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 LLAMA_CLOUD_API_KEY = "llx_xxxx"
 ```
-
