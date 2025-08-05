@@ -3,6 +3,9 @@
 A **multilingual Retrieval-Augmented Generation (RAG)** system for **Arabic and English**, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
 
 Supports **Streamlit** deployment for an interactive web interface.
+## 🎥 Demo Video
+
+[![Watch the demo](docs/screen.png)](https://www.youtube.com/watch?v=UE_m3gu2TEE)
 
 ---
 
