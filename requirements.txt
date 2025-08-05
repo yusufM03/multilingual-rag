@@ -1,5 +1,6 @@
-llama-index==0.9.48
-llama-cloud-services 
+llama-index==0.10.14
+llama-cloud-services==0.1.8
+llama-parse==0.4.9
 langdetect
 streamlit>=1.28.0
 pandas>=1.5.0
@@ -10,7 +11,6 @@ sentence-transformers>=2.2.0
 openai>=1.0.0
 tiktoken>=0.5.0
 requests>=2.30.0
-llama-cloud>=0.0.5
 numpy>=1.24.0
 Pillow>=9.5.0
 python-multipart>=0.0.6
