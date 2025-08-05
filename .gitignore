@@ -1,7 +1,7 @@
 # 🔹 Environment files
 .env
 *.env
-
+.streamlit/secrets.toml
 # 🔹 Local caches or temp files
 embeddings_cache/
 __pycache__/

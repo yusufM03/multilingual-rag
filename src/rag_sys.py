@@ -21,12 +21,14 @@ import os
 import requests
 load_dotenv()
 
-# Environment variables
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_API_KEY_1= os.getenv("GROQ_API_KEY_1")
-LLAMA_CLOUD_API_KEY = os.getenv("LLAMA_CLOUD_API_KEY")
+# fro deployment
+import streamlit as st
+GROQ_API_KEY_1=st.secrets["groq_api_key_1"]
+GROQ_API_KEY = st.secrets["groq_api_key"]
+QDRANT_API_KEY = st.secrets["qdrant_api_key"]
+QDRANT_URL = st.secrets["qdrant_url"]
+LLAMA_CLOUD_API_KEY = st.secrets["llama_cloud_api_key"]
+
 
 # Collection names for different languages
 ARABIC_COLLECTION = "arabic_docs"

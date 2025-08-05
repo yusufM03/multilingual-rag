@@ -1,0 +1,132 @@
+# Multilingual RAG
+
+A **multilingual Retrieval-Augmented Generation (RAG)** system for Arabic and English, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
+
+Supports **Streamlit** deployment for an interactive web interface.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Prerequisites
+
+* Python **3.8+**
+* A free **Qdrant Cloud** account
+* API keys for:
+
+  * **Groq** (LLM)
+  * **Qdrant** (vector DB)
+  * **LlamaCloud** (PDF extraction)
+
+---
+
+### 2. Installation
+
+```bash
+# Clone or download the project
+git clone https://github.com/yusufM03/multilingual-rag.git
+cd multilingual-rag
+
+# Create a new conda environment
+conda create -n rag-agent python=3.10 -y
+
+# Activate environment
+conda activate rag-agent
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+---
+
+### 3. Environment Configuration
+
+Create a `.streamlit/secrets.toml` file in the **project root**:
+
+```env
+# Qdrant Cloud Configuration
+qdrant_url=https://your-cluster-url.qdrant.tech:6333
+qdrant_api_key=your-qdrant-api-key
+
+# Groq API Keys (for LLM)
+groq_api_key=gsk_your-groq-api-key-for-arabic
+groq_api_key_1=gsk_your-groq-api-key-for-english
+
+# LlamaCloud API Key (for PDF extraction)
+llama_cloud_api_key=llx_your-llamacloud-api-key
+```
+
+---
+
+### 4. Required API Keys
+
+#### **Qdrant Cloud (Vector Database)**
+
+1. Go to [Qdrant Cloud](https://cloud.qdrant.io/)
+2. Create a free account
+3. Create a new cluster
+4. Copy your **cluster URL** and **API key**
+
+#### **Groq (LLM Provider)**
+
+1. Visit [Groq Console](https://console.groq.com/)
+2. Sign up and create API keys
+3. We use **two keys** for load balancing (Arabic/English)
+
+#### **LlamaCloud (PDF Extraction)**
+
+1. Go to [LlamaCloud](https://llamaindex.ai/)
+2. Sign up and get your **API key**
+3. Required for **document parsing**
+
+---
+
+### 5. Project Structure
+
+```
+yusufm03-multilingual-rag/
+├── requirements.txt
+├── docs/
+├── research/
+│   ├── ChromDb_local/
+│   │   ├── instructions.md
+│   │   └── localApp.py
+│   └── Test_Arabic/
+│       ├── arabic_llama.txt
+│       ├── arabic_page_OCR.txt
+│       ├── arabic_page_pymypdf.txt
+│       ├── chunck.py
+│       ├── Extract_tool_OCR.py
+│       ├── Extract_Tool_Pymupdf.py
+│       └── extrcat_tool_paddleocr.py
+└── src/
+    ├── app.py        # Streamlit app entry point
+    └── rag_sys.py    # Core RAG system
+```
+
+---
+
+### 6. Run the App
+
+```bash
+streamlit run src/app.py
+```
+
+Then open the local URL shown in the terminal.
+
+---
+
+### 7. Deployment on Streamlit Cloud
+
+1. Push your code to GitHub
+2. Deploy via [Streamlit Cloud](https://share.streamlit.io/)
+3. Set your **Secrets** in `Settings → Secrets` in TOML format:
+
+```toml
+GROQ_API_KEY = "gsk_xxxx"
+GROQ_API_KEY_1 = "gsk_xxxx"
+QDRANT_URL = "https://xxxx.qdrant.tech:6333"
+QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+LLAMA_CLOUD_API_KEY = "llx_xxxx"
+```
+

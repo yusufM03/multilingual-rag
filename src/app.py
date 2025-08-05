@@ -12,7 +12,7 @@ from typing import List, Dict, Any
 import hashlib
 
 
-from src.rag_sys import RAGResponse , MultilingualRAGSystem
+from rag_sys import RAGResponse , MultilingualRAGSystem
 
 # Configure Streamlit page
 st.set_page_config(
