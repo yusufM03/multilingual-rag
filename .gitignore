@@ -1,0 +1,12 @@
+# 🔹 Environment files
+.env
+*.env
+
+# 🔹 Local caches or temp files
+embeddings_cache/
+__pycache__/
+*.pyc
+
+Documents/
+*.json
+*.xlsx
