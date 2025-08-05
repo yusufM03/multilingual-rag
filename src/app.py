@@ -14,83 +14,52 @@ import hashlib
 # Import the LlamaIndex-based RAG system
 from rag_sys import RAGResponse, MultilingualRAGWithLlamaIndex
 
-# Configure Streamlit page
 st.set_page_config(
     page_title="Multilingual RAG System - LlamaIndex",
     page_icon="🌐",
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Custom CSS for better styling
 st.markdown("""
 <style>
-    .main-header {
-        text-align: center;
-        padding: 2rem 0;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-radius: 10px;
-        margin-bottom: 2rem;
+/* Use prefers-color-scheme to detect light/dark mode */
+@media (prefers-color-scheme: dark) {
+    .stApp {
+        background-color: #0e1117 !important;  /* Dark background */
+        color: white !important;
     }
-    
-    .upload-section {
-        background-color: #f8f9fa;
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin: 1rem 0;
+    section[data-testid="stSidebar"] {
+        background-color: #1c1f26 !important;  /* Dark sidebar */
     }
-    
-    .qa-section {
-        background-color: #ffffff;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border: 1px solid #e9ecef;
-        margin: 1rem 0;
+    .upload-section, .qa-section, .answer-box, .metric-card {
+        background-color: #1c1f26 !important;
+        color: white !important;
+        border: 1px solid #333 !important;
     }
-    
-    .answer-box {
-        background-color: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
-        border-left: 4px solid #28a745;
-        margin: 1rem 0;
-    }
-    
-    .source-box {
-        background-color: #e9ecef;
-        padding: 0.8rem;
-        border-radius: 6px;
-        margin: 0.5rem 0;
-        font-size: 0.9em;
-    }
-    
-    .metric-card {
-        background-color: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        text-align: center;
-    }
-    
     .stButton > button {
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border: none;
-        border-radius: 5px;
-        padding: 0.5rem 1rem;
-        font-weight: bold;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
     }
-    
-    .rtl-text {
-        direction: rtl;
-        text-align: right;
-        font-family: 'Noto Sans Arabic', sans-serif;
-    }
-</style>
+}
 
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;600&display=swap" rel="stylesheet">
+/* Light Mode (default) */
+@media (prefers-color-scheme: light) {
+    .stApp {
+        background-color: white !important;
+        color: black !important;
+    }
+    section[data-testid="stSidebar"] {
+        background-color: #f8f9fa !important;
+    }
+    .upload-section, .qa-section, .answer-box, .metric-card {
+        background-color: #ffffff !important;
+        color: black !important;
+        border: 1px solid #e9ecef !important;
+    }
+}
+</style>
 """, unsafe_allow_html=True)
+
 
 # Initialize session state
 def initialize_session_state():
@@ -627,7 +596,15 @@ def display_answer_llamaindex(qa_entry):
     
     # Answer
     st.markdown("### 💡 Answer")
-    st.markdown(f'<div class="answer-box {text_class}">{qa_entry["answer"]}</div>', unsafe_allow_html=True)
+    st.markdown(
+    f"""
+    <div class="answer-box" style="padding: 15px; border-radius: 8px;">
+        {qa_entry['answer']}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
     
     # Metrics
     col1, col2, col3, col4, col5 = st.columns(5)
