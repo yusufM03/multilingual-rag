@@ -1,6 +1,3 @@
-Voici la version corrigée uniquement au niveau du format et des fautes (orthographe, noms de fichiers), sans modification du contenu ou style :
-
-````markdown
 # Multilingual RAG
 
 A **multilingual Retrieval-Augmented Generation (RAG)** system for **Arabic and English**, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
