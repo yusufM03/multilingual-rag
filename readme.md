@@ -1,8 +1,12 @@
+Voici la version corrigée uniquement au niveau du format et des fautes (orthographe, noms de fichiers), sans modification du contenu ou style :
+
+````markdown
 # Multilingual RAG
 
 A **multilingual Retrieval-Augmented Generation (RAG)** system for **Arabic and English**, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
 
 Supports **Streamlit** deployment for an interactive web interface.
+
 ## 🎥 Demo Video
 
 [![Watch the demo](docs/screen.png)](https://www.youtube.com/watch?v=UE_m3gu2TEE)
@@ -11,45 +15,45 @@ Supports **Streamlit** deployment for an interactive web interface.
 
 ## 🏗 Architecture Overview
 
-The **Multilingual RAG System** is designed for **Arabic and English document understanding**.
+The **Multilingual RAG System** is designed for **Arabic and English document understanding**.  
 It separates **document processing, storage, and querying** into clear layers to ensure **scalability, multilingual support, and high-speed retrieval**.
 
 ![Architecture Overview](docs/overview.png)
 
 ### **1. Document Ingestion & Extraction**
 
-* Converts raw PDFs/DOCs into structured text blocks with metadata.
-* Supports **complex layouts** (tables, multi-column text, footnotes).
-* Automatically detects **Arabic (RTL)** vs. **English (LTR)** content.
+* Converts raw PDFs/DOCs into structured text blocks with metadata.  
+* Supports **complex layouts** (tables, multi-column text, footnotes).  
+* Automatically detects **Arabic (RTL)** vs. **English (LTR)** content.  
 * Outputs **clean, chunked text** ready for embedding.
 
 ### **2. Embedding & Vector Storage**
 
-* Converts text chunks into **multilingual semantic embeddings**.
+* Converts text chunks into **multilingual semantic embeddings**.  
 * Stores vectors in **Qdrant Cloud** with:
 
-  * **Language-specific collections** (Arabic / English)
-  * **High-speed vector similarity search**
+  * **Language-specific collections** (Arabic / English)  
+  * **High-speed vector similarity search**  
   * **Cloud scalability for large datasets**
 
 ### **3. Query Processing & Retrieval**
 
-* Detects query language automatically.
-* Retrieves **top semantic matches** from the relevant collection.
+* Detects query language automatically.  
+* Retrieves **top semantic matches** from the relevant collection.  
 * Aggregates context for accurate, language-specific responses.
 
 ### **4. RAG Generation Layer**
 
-* Powered by **Groq-accelerated Llama models**.
+* Powered by **Groq-accelerated Llama models**.  
 * Produces **multilingual answers** enriched with:
 
-  * **Contextual reasoning**
+  * **Contextual reasoning**  
   * **Source citations** (page numbers & document names)
 
 ### **5. User Interface & Deployment**
 
-* **Streamlit web app** for interactive queries and document uploads.
-* **RTL support** for Arabic UI.
+* **Streamlit web app** for interactive queries and document uploads.  
+* **RTL support** for Arabic UI.  
 * **Streamlit Cloud deployment** with secure secrets management.
 
 ---
@@ -58,12 +62,12 @@ It separates **document processing, storage, and querying** into clear layers to
 
 ### 1. Prerequisites
 
-* Python **3.8+**
-* A free **Qdrant Cloud** account
+* Python **3.8+**  
+* A free **Qdrant Cloud** account  
 * API keys for:
 
-  * **Groq** (LLM)
-  * **Qdrant** (vector DB)
+  * **Groq** (LLM)  
+  * **Qdrant** (vector DB)  
   * **LlamaCloud** (PDF extraction)
 
 ---
@@ -83,7 +87,7 @@ conda activate rag-agent
 
 # Install dependencies
 pip install -r requirements.txt
-```
+````
 
 ---
 
@@ -143,11 +147,11 @@ yusufm03-multilingual-rag/
 │   └── Test_Arabic/
 │       ├── arabic_llama.txt
 │       ├── arabic_page_OCR.txt
-│       ├── arabic_page_pymypdf.txt
-│       ├── chunck.py
+│       ├── arabic_page_pymupdf.txt
+│       ├── chunk.py
 │       ├── Extract_tool_OCR.py
-│       ├── Extract_Tool_Pymupdf.py
-│       └── extrcat_tool_paddleocr.py
+│       ├── Extract_tool_pymupdf.py
+│       └── extract_tool_paddleocr.py
 └── src/
     ├── app.py        # Streamlit app entry point
     └── rag_sys.py    # Core RAG system
@@ -177,4 +181,36 @@ GROQ_API_KEY_1 = "gsk_xxxx"
 QDRANT_URL = "https://xxxx.qdrant.tech:6333"
 QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 LLAMA_CLOUD_API_KEY = "llx_xxxx"
+```
+
+### 8. LLMOps Evaluation
+
+To ensure high-quality multilingual responses and monitor RAG system performance in production, we integrate LLMOps evaluation using Weights & Biases (W\&B) Cloud:
+
+* Version Control for Prompts & Models
+  Every logged query includes prompt\_version and embedding\_model\_version metadata to enable full reproducibility and easy rollback.
+
+* Retrieval Monitoring & Drift Detection
+  Continuous tracking of Recall\@K and embedding similarity distributions helps detect retrieval quality degradation or embedding drift early.
+
+* Feedback-Driven Optimization
+  Human-labeled feedback is incorporated to refine prompt engineering, retrain embedding models, and tune retrieval parameters for better accuracy.
+
+* Regression Testing & Batch Evaluation
+  Maintain a curated set of historical queries and run batch tests offline to benchmark system performance and prevent regressions after updates.
+
+```
+User Query → Qdrant Retrieval → LLM Response
+       ↓                   ↓
+  Retrieve Top-K        Compute Evaluation
+   (context)        ┌──────────────┐
+        └─────────▶│ Auto Metrics │
+                   │ + W&B Logging│
+                   └──────────────┘
+                           ↓
+              Continuous Monitoring & Improvement
+                           ↓
+                 Batch Regression Testing
+                           ↓
+               Model/Prompt Updates & Deployment
 ```
