@@ -234,14 +234,14 @@ def display_document_upload():
         uploaded_files = st.file_uploader(
             "Upload PDF documents (Arabic or English)",
             type=['pdf'],
-            accept_multiple_files=True,
+            accept_multiple_files=False,
             help="Upload one or more PDF files. The system will automatically detect the language and extract structured content using LlamaIndex."
         )
     
     with col2:
         language_option = st.selectbox(
             "Language Detection",
-            ["Auto-detect", "Force Arabic", "Force English"],
+            ["Force Arabic", "Force English"],
             help="Choose how to handle language detection"
         )
         
@@ -271,6 +271,7 @@ def display_document_upload():
         )
     
     if uploaded_files and st.button("🚀 Process Documents with LlamaIndex", type="primary"):
+        uploaded_files  = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
         process_documents_llamaindex(uploaded_files, language_option, chunk_size, chunk_overlap, collection_mode)
     
     # Display processed documents
@@ -301,7 +302,6 @@ def process_documents_llamaindex(uploaded_files, language_option, chunk_size, ch
     
     # Map language options
     lang_map = {
-        "Auto-detect": "auto",
         "Force Arabic": "ar", 
         "Force English": "en"
     }
@@ -492,13 +492,13 @@ def display_qa_interface():
             "Number of sources (top_k)",
             min_value=3,
             max_value=20,
-            value=5,
+            value=10,
             help="How many relevant chunks to retrieve from vector index"
         )
         
         retrieval_method = st.selectbox(
             "Retrieval Method",
-            ["Standard Query Engine", "Manual Retrieval + Custom Prompt"],
+            ["Manual Retrieval + Custom Prompt"],
             help="Choose between LlamaIndex query engine or manual retrieval with custom prompts"
         )
         
