@@ -37,6 +37,7 @@ from llama_cloud_services import LlamaExtract
 from llama_cloud.types import ExtractConfig, ExtractMode
 from dotenv import load_dotenv
 import requests
+import time
 
 load_dotenv()
 
@@ -62,6 +63,8 @@ class RAGResponse:
     query_language: str
     confidence_score: float = 0.0
     sources: List[str] = None
+    llm_latency: float = 0.0
+    retrieval_latency: float = 0.0
 
 class LanguageDetector:
     """Simple but effective language detector for Arabic and English"""
@@ -823,13 +826,14 @@ Answer:"""
         
         try:
             # Manual retrieval
+            retrieval_start=time.time()
             retriever = VectorIndexRetriever(
                 index=index,
                 similarity_top_k=similarity_top_k,
             )
             
             retrieved_nodes = retriever.retrieve(query)
-            
+            retrieval_latency = (time.time() - retrieval_start) * 1000  # ms
             # Extract context and metadata
             retrieved_chunks = []
             sources = set()
@@ -867,8 +871,10 @@ Answer:"""
             custom_prompt = self.create_rag_prompt(query, context, query_language)
             
             # Generate response
+            start_time=time.time()
             print("Generating answer with custom prompt...")
             response = llm.complete(custom_prompt)
+            llm_latency=(time.time() - start_time) * 1000
             
             # Calculate confidence
             confidence = (sum(chunk['score'] for chunk in retrieved_chunks) / len(retrieved_chunks) 
@@ -880,7 +886,9 @@ Answer:"""
                 query=query,
                 query_language=query_language,
                 confidence_score=confidence,
-                sources=list(sources)
+                sources=list(sources),
+                llm_latency=llm_latency,
+                retrieval_latency= retrieval_latency
             )
             
         except Exception as e:

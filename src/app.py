@@ -10,7 +10,8 @@ from datetime import datetime
 import time
 from typing import List, Dict, Any
 import hashlib
-
+from utils import store_logs_ToCosmosDB,update_feedback
+import uuid
 # Import the LlamaIndex-based RAG system
 from rag_sys import RAGResponse, MultilingualRAGWithLlamaIndex
 
@@ -74,7 +75,24 @@ def initialize_session_state():
         st.session_state.system_initialized = False
     if 'collection_stats' not in st.session_state:
         st.session_state.collection_stats = {'arabic': 0, 'english': 0}
+def feedback_ui(session_id):
+    st.write("Was this answer helpful?")
 
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("👍 Like"):
+            success = update_feedback(session_id, "like")
+            if success:
+                st.success("Thanks for your feedback!")
+            else:
+                st.error("Failed to update feedback.")
+    with col2:
+        if st.button("👎 Dislike"):
+            success = update_feedback(session_id, "dislike")
+            if success:
+                st.success("Thanks for your feedback!")
+            else:
+                st.error("Failed to update feedback.")
 def validate_api_keys():
     """Validate required API keys"""
     required_keys = {
@@ -527,12 +545,12 @@ def display_qa_interface():
     st.markdown('</div>', unsafe_allow_html=True)
 
 def get_answer_llamaindex(question, similarity_top_k, retrieval_method, similarity_cutoff, debug_mode=False):
-    """Get answer using LlamaIndex RAG system"""
+    """Get answer using LlamaIndex RAG system and log to Cosmos DB."""
     with st.spinner("🤖 LlamaIndex is thinking... Please wait"):
         try:
             start_time = time.time()
             
-            # Choose retrieval method
+          
             if retrieval_method == "Manual Retrieval + Custom Prompt":
                 response = st.session_state.rag_system.ask_question_with_manual_retrieval(
                     query=question,
@@ -544,41 +562,76 @@ def get_answer_llamaindex(question, similarity_top_k, retrieval_method, similari
                     similarity_top_k=similarity_top_k
                 )
             
-            processing_time = time.time() - start_time
-            
-            # Debug mode: show retrieved chunks
-            if debug_mode:
-                st.markdown("### 🔍 Debug: Retrieved Chunks")
-                for i, chunk in enumerate(response.retrieved_chunks, 1):
-                    with st.expander(f"Debug Chunk {i} - Score: {chunk['score']:.3f}"):
-                        st.write(f"**Document:** {chunk.get('document_name', 'N/A')}")
-                        st.write(f"**Page:** {chunk.get('page_number', 'N/A')}")
-                        st.write(f"**Block Type:** {chunk.get('block_type', 'N/A')}")
-                        st.write("**Content:**")
-                        st.text(chunk['content'])
-            
-            # Add to history
-            qa_entry = {
+
+          
+
+            # --- Full Processing Time ---
+            processing_time_ms = (time.time() - start_time) * 1000
+
+            # --- Session History (for UI) ---
+            qa_entry_ui = {
                 "question": question,
                 "answer": response.answer,
                 "language": response.query_language,
                 "confidence": response.confidence_score,
                 "sources": response.sources if response.sources else [],
                 "retrieved_chunks": response.retrieved_chunks,
-                "processing_time": processing_time,
+                "processing_time": processing_time_ms / 1000, 
                 "timestamp": datetime.now().isoformat(),
                 "method": retrieval_method,
                 "top_k": similarity_top_k
             }
-            st.session_state.qa_history.insert(0, qa_entry)  # Add to beginning
+            st.session_state.qa_history.insert(0, qa_entry_ui)
+
+            # --- LLMOps Log for Cosmos DB ---
+            qa_log_entry = {
+                # User Query Info
+                "question": question,
+                "language": response.query_language,
+                "timestamp": datetime.utcnow().isoformat(),
+
+                # Retrieval Info
+                "retrieval_method": retrieval_method,
+                "retrieved_chunks": response.retrieved_chunks,
+                "similarity_scores": [chunk.get('score', None) for chunk in response.retrieved_chunks],
+                "sources": response.sources if response.sources else [],
+                "top_k": similarity_top_k,
+                "retrieval_latency_ms": response.retrieval_latency,
+
+                # LLM Generation Info
+                "answer": response.answer,
+                "llm_model": "Groq-Llama-3-70B",
+                "generation_latency_ms":response.llm_latency,
+                "confidence": response.confidence_score,
+
+                # Feedback & Evaluation
+                "feedback": None,
+                "processing_time_ms": round(processing_time_ms, 2),
+
+                # Metadata for LLMOps
+                "session_id": str(uuid.uuid4()),
+                "app_version": "v1.0.0",
+                "embedding_model_version": "text-embedding-multilingual-v2",
+                "prompt_version": "rag_template_v3"
+            }
             
-            # Display the answer
-            display_answer_llamaindex(qa_entry)
+            st.session_state["current_session_id"] =qa_log_entry["session_id"]
+
+            store_logs_ToCosmosDB(qa_log_entry)
+
             
+
+            # --- Display Answer in UI ---
+            display_answer_llamaindex(qa_entry_ui)
+          
+
+            feedback_ui(st.session_state["current_session_id"])
+
         except Exception as e:
             st.error(f"❌ Error getting answer from LlamaIndex: {str(e)}")
             import traceback
             st.error(f"Traceback: {traceback.format_exc()}")
+
 
 def display_answer_llamaindex(qa_entry):
     """Display a Q&A entry with LlamaIndex-specific formatting"""
