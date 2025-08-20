@@ -518,20 +518,19 @@ def process_pdf_append_mode(rag_system, pdf_path, language, document_name):
                 print(f"The file '{document_name}' has already been loaded. Skipping insertion.")
                 return existing_index, detected_language
         
-        # Extract chunks from PDF
-        documents = extract_chunck(rag_system, pdf_path, document_name, detected_language)
-        if not documents:
-            print("No documents extracted")
-            return None, detected_language
+            # Extract chunks from PDF
+            documents = extract_chunck(rag_system, pdf_path, document_name, detected_language)
+            if not documents:
+                print("No documents extracted")
+                return None, detected_language
         
-        # Add file_name to metadata
-        for doc in documents:
-            if not doc.metadata:
-                doc.metadata = {}
-            doc.metadata["file_name"] = document_name
+            # Add file_name to metadata
+            for doc in documents:
+                if not doc.metadata:
+                    doc.metadata = {}
+                doc.metadata["file_name"] = document_name
         
-        # If collection exists, check for duplicates
-        
+      
             
             # Insert all chunks
             for doc in documents:
@@ -541,6 +540,17 @@ def process_pdf_append_mode(rag_system, pdf_path, language, document_name):
         
         # If no existing index, create new
         else:
+              # Extract chunks from PDF
+            documents = extract_chunck(rag_system, pdf_path, document_name, detected_language)
+            if not documents:
+                print("No documents extracted")
+                return None, detected_language
+        
+            # Add file_name to metadata
+            for doc in documents:
+                if not doc.metadata:
+                    doc.metadata = {}
+                doc.metadata["file_name"] = document_name
             index = rag_system.create_index(documents, collection_name, detected_language)
             print(f"Created new index with {len(documents)} chunks.")
             return index, detected_language
