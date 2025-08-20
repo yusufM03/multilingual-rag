@@ -1,8 +1,26 @@
 # Multilingual RAG
 
-A **multilingual Retrieval-Augmented Generation (RAG)** system for **Arabic and English**, using **Qdrant** as the vector database, **Groq LLMs** for reasoning, and **LlamaCloud** for PDF extraction.
+## Table of Contents
 
-Supports **Streamlit** deployment for an interactive web interface.
+* [🎥 Demo Video](#🎥-demo-video)
+* [🏗 Architecture Overview](#🏗-architecture-overview)
+
+  * [1. Document Ingestion & Extraction](#1-document-ingestion--extraction)
+  * [2. Embedding & Vector Storage](#2-embedding--vector-storage)
+  * [3. Query Processing & Retrieval](#3-query-processing--retrieval)
+  * [4. RAG Generation Layer](#4-rag-generation-layer)
+  * [5. User Interface & Deployment](#5-user-interface--deployment)
+* [🚀 Quick Start](#🚀-quick-start)
+
+  * [Online Demo](#online-demo)
+  * [1. Prerequisites](#1-prerequisites)
+  * [2. Environment Configuration](#2-environment-configuration)
+  * [2. Running with Docker](#2-running-with-docker)
+  * [3. Running Locally (From Source)](#3-running-locally-from-source)
+  * [7. Project Structure](#7-project-structure)
+  * [9. LLMOps Evaluation](#9-llmops-evaluation)
+
+---
 
 ## 🎥 Demo Video
 
@@ -12,85 +30,85 @@ Supports **Streamlit** deployment for an interactive web interface.
 
 ## 🏗 Architecture Overview
 
-The **Multilingual RAG System** is designed for **Arabic and English document understanding**.  
+The **Multilingual RAG System** is designed for **Arabic and English document understanding**.
 It separates **document processing, storage, and querying** into clear layers to ensure **scalability, multilingual support, and high-speed retrieval**.
 
 ![Architecture Overview](docs/overview.png)
 
-### **1. Document Ingestion & Extraction**
+### 1. Document Ingestion & Extraction
 
-* Converts raw PDFs/DOCs into structured text blocks with metadata.  
-* Supports **complex layouts** (tables, multi-column text, footnotes).  
-* Automatically detects **Arabic (RTL)** vs. **English (LTR)** content.  
+* Converts raw PDFs/DOCs into structured text blocks with metadata.
+* Supports **complex layouts** (tables, multi-column text, footnotes).
+* Automatically detects **Arabic (RTL)** vs. **English (LTR)** content.
 * Outputs **clean, chunked text** ready for embedding.
 
-### **2. Embedding & Vector Storage**
+### 2. Embedding & Vector Storage
 
-* Converts text chunks into **multilingual semantic embeddings**.  
+* Converts text chunks into **multilingual semantic embeddings**.
 * Stores vectors in **Qdrant Cloud** with:
 
-  * **Language-specific collections** (Arabic / English)  
-  * **High-speed vector similarity search**  
+  * **Language-specific collections** (Arabic / English)
+  * **High-speed vector similarity search**
   * **Cloud scalability for large datasets**
 
-### **3. Query Processing & Retrieval**
+### 3. Query Processing & Retrieval
 
-* Detects query language automatically.  
-* Retrieves **top semantic matches** from the relevant collection.  
+* Detects query language automatically.
+* Retrieves **top semantic matches** from the relevant collection.
 * Aggregates context for accurate, language-specific responses.
 
-### **4. RAG Generation Layer**
+### 4. RAG Generation Layer
 
-* Powered by **Groq-accelerated Llama models**.  
+* Powered by **Groq-accelerated Llama models**.
 * Produces **multilingual answers** enriched with:
 
-  * **Contextual reasoning**  
+  * **Contextual reasoning**
   * **Source citations** (page numbers & document names)
 
-### **5. User Interface & Deployment**
+### 5. User Interface & Deployment
 
-* **Streamlit web app** for interactive queries and document uploads.  
-* **RTL support** for Arabic UI.  
+* **Streamlit web app** for interactive queries and document uploads.
 * **Streamlit Cloud deployment** with secure secrets management.
 
 ---
 
 ## 🚀 Quick Start
 
+### Online Demo
+
+Try the live app:
+[https://multilingual-rag-app.streamlit.app/](https://multilingual-rag-app.streamlit.app/)
+
+---
+
 ### 1. Prerequisites
 
-* Python **3.8+**  
-* A free **Qdrant Cloud** account  
+* Docker installed
+* A free **Qdrant Cloud** account
 * API keys for:
 
-  * **Groq** (LLM)  
-  * **Qdrant** (vector DB)  
+  * **Groq** (LLM)
+  * **Qdrant** (vector DB)
   * **LlamaCloud** (PDF extraction)
 
----
+**Required API Keys**
 
-### 2. Installation
+* **Qdrant Cloud (Vector Database)**
+  Go to Qdrant Cloud → Create a free account → Create a new cluster → Copy your cluster URL and API key
 
-```bash
-# Clone or download the project
-git clone https://github.com/yusufM03/multilingual-rag.git
-cd multilingual-rag
+* **Groq (LLM Provider)**
+  Visit Groq Console → Sign up and create API keys
+  (We use two keys for load balancing Arabic and English)
 
-# Create a new conda environment
-conda create -n rag-agent python=3.10 -y
-
-# Activate environment
-conda activate rag-agent
-
-# Install dependencies
-pip install -r requirements.txt
-````
+* **LlamaCloud (PDF Extraction)**
+  Go to LlamaCloud → Sign up and get your API key
+  (Required for document parsing)
 
 ---
 
-### 3. Environment Configuration
+### 2. Environment Configuration
 
-Create a `.streamlit/secrets.toml` file in the **project root**:
+Create a `.streamlit/secrets.toml` file in the **project root** with your API keys:
 
 ```toml
 # Qdrant Cloud Configuration
@@ -107,94 +125,97 @@ llama_cloud_api_key=llx_your-llamacloud-api-key
 
 ---
 
-### 4. Required API Keys
+# 🚀 Running the RAG App
 
-#### **Qdrant Cloud (Vector Database)**
+## 1. Running with Docker (Prebuilt Image)
 
-1. Go to [Qdrant Cloud](https://cloud.qdrant.io/)
-2. Create a free account
-3. Create a new cluster
-4. Copy your **cluster URL** and **API key**
+You can pull and run the prebuilt image from Docker Hub directly.
 
-#### **Groq (LLM Provider)**
+### **Windows PowerShell**
 
-1. Visit [Groq Console](https://console.groq.com/)
-2. Sign up and create API keys
-3. We use **two keys** for load balancing (Arabic/English)
-
-#### **LlamaCloud (PDF Extraction)**
-
-1. Go to [LlamaCloud](https://llamaindex.ai/)
-2. Sign up and get your **API key**
-3. Required for **document parsing**
-
----
-
-### 5. Project Structure
-
-```
-yusufm03-multilingual-rag/
-├── requirements.txt
-├── docs/
-│   └── architecture_overview.png   # Architecture diagram
-├── research/
-│   ├── ChromDb_local/
-│   │   ├── instructions.md
-│   │   └── localApp.py
-│   └── Test_Arabic/
-│       ├── arabic_llama.txt
-│       ├── arabic_page_OCR.txt
-│       ├── arabic_page_pymupdf.txt
-│       ├── chunk.py
-│       ├── Extract_tool_OCR.py
-│       ├── Extract_tool_pymupdf.py
-│       └── extract_tool_paddleocr.py
-└── src/
-    ├── app.py        # Streamlit app entry point
-    └── rag_sys.py    # Core RAG system
+```powershell
+# Run prebuilt image from Docker Hub with secrets mounted
+docker run --rm -p 8501:8501 `
+  -v ${PWD}/.streamlit/secrets.toml:/app/.streamlit/secrets.toml `
+  ymack/my-rag-app:latest
 ```
 
----
-
-### 6. Run the App
+### **Linux / macOS**
 
 ```bash
-streamlit run src/app.py
+docker run --rm -p 8501:8501 \
+  -v $(pwd)/.streamlit/secrets.toml:/app/.streamlit/secrets.toml \
+  ymack/my-rag-app:latest
 ```
 
-Then open the local URL shown in the terminal.
+Then open your browser to:
+[http://localhost:8501](http://localhost:8501)
 
 ---
 
-### 7. Deployment on Streamlit Cloud
+## 2. Running Locally (From Source)
 
-1. Push your code to GitHub
-2. Deploy via [Streamlit Cloud](https://share.streamlit.io/)
-3. Set your **Secrets** in `Settings → Secrets` in TOML format:
+If you prefer to build and run the image locally:
 
-```toml
-GROQ_API_KEY = "gsk_xxxx"
-GROQ_API_KEY_1 = "gsk_xxxx"
-QDRANT_URL = "https://xxxx.qdrant.tech:6333"
-QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-LLAMA_CLOUD_API_KEY = "llx_xxxx"
+```bash
+# Clone the repository
+git clone https://github.com/yusufM03/multilingual-rag.git
+cd multilingual-rag
+
+# Build the Docker image locally
+docker build -t my-rag-app .
+
+# Run the container with secrets mounted
+docker run --rm -p 8501:8501 \
+  -v $(pwd)/.streamlit/secrets.toml:/app/.streamlit/secrets.toml \
+  my-rag-app
 ```
 
-### 8. LLMOps Evaluation
+---
 
-To ensure high-quality multilingual responses and monitor RAG system performance in production, we integrate LLMOps evaluation using Weights & Biases (W\&B) Cloud:
+Make sure `.streamlit/secrets.toml` exists **before** running the container.
 
-* Version Control for Prompts & Models
-  Every logged query includes prompt\_version and embedding\_model\_version metadata to enable full reproducibility and easy rollback.
 
-* Retrieval Monitoring & Drift Detection
-  Continuous tracking of Recall\@K and embedding similarity distributions helps detect retrieval quality degradation or embedding drift early.
 
-* Feedback-Driven Optimization
-  Human-labeled feedback is incorporated to refine prompt engineering, retrain embedding models, and tune retrieval parameters for better accuracy.
+### 7. Project Structure
 
-* Regression Testing & Batch Evaluation
-  Maintain a curated set of historical queries and run batch tests offline to benchmark system performance and prevent regressions after updates.
+```
+yusufm03-multilingual-rag//
+├── .streamlit/
+│   └── secrets.toml
+├── config/
+│   ├── __init__.py
+│   └── settings.py
+├── docs/
+│   ├── Agentic RAG Task.pdf
+│   ├── overview.png
+├── Documents/
+├── models/
+│   └── rag_response.py
+├── src/
+│   ├── __init__.py
+│   ├── app.py
+│   └── core.py
+├── utils/
+│   ├── language_detector.py
+│   └── store_logs.py
+├── .dockerignore
+├── .gitignore
+├── dockerfile
+├── readme.md
+└── requirements.txt
+```
+
+---
+
+### 9. LLMOps Evaluation
+
+Integrated with Weights & Biases (W\&B) Cloud for:
+
+* Version control of prompts & models
+* Retrieval monitoring & drift detection
+* Feedback-driven optimization
+* Regression testing & batch evaluation
 
 ```
 User Query → Qdrant Retrieval → LLM Response

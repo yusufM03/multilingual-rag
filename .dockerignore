@@ -10,5 +10,3 @@ __pycache__/
 Documents/
 *.json
 *.xlsx
-chunked_files
-export.py

@@ -1,19 +1,26 @@
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import os
+import sys
 import tempfile
 import json
 from datetime import datetime
 import time
-from typing import List, Dict, Any
-import hashlib
-from utils import store_logs_ToCosmosDB,update_feedback
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from utils.store_logs import store_logs_ToCosmosDB, update_feedback
+from utils.language_detector import LanguageDetector
 import uuid
-# Import the LlamaIndex-based RAG system
-from rag_sys import RAGResponse, MultilingualRAGWithLlamaIndex
+
+from core import MultilingualRAGWithLlamaIndex
+from config.settings import configs
+from qdrant_client.http import models as qmodels
+
+
+
+
 
 st.set_page_config(
     page_title="Multilingual RAG System - LlamaIndex",
@@ -21,29 +28,41 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Custom CSS with better structure
 st.markdown("""
 <style>
-/* Use prefers-color-scheme to detect light/dark mode */
+/* Base styles */
+.stApp {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Dark mode styles */
 @media (prefers-color-scheme: dark) {
     .stApp {
-        background-color: #0e1117 !important;  /* Dark background */
+        background-color: #0e1117 !important;
         color: white !important;
     }
     section[data-testid="stSidebar"] {
-        background-color: #1c1f26 !important;  /* Dark sidebar */
+        background-color: #1c1f26 !important;
     }
     .upload-section, .qa-section, .answer-box, .metric-card {
         background-color: #1c1f26 !important;
         color: white !important;
         border: 1px solid #333 !important;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
     }
     .stButton > button {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
         color: white !important;
+        border: none !important;
+        border-radius: 6px;
     }
 }
 
-/* Light Mode (default) */
+/* Light mode styles */
 @media (prefers-color-scheme: light) {
     .stApp {
         background-color: white !important;
@@ -56,7 +75,54 @@ st.markdown("""
         background-color: #ffffff !important;
         color: black !important;
         border: 1px solid #e9ecef !important;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 10px 0;
     }
+    .stButton > button {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 6px;
+    }
+}
+
+/* RTL support for Arabic text */
+.rtl-text {
+    direction: rtl;
+    text-align: right;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Source box styling */
+.source-box {
+    background-color: rgba(128, 128, 128, 0.1);
+    padding: 8px;
+    margin: 5px 0;
+    border-radius: 4px;
+    border-left: 3px solid #667eea;
+}
+
+/* Main header styling */
+.main-header {
+    text-align: center;
+    padding: 1rem 0;
+    margin-bottom: 2rem;
+}
+
+.main-header h1 {
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 2.5rem;
+    margin: 0;
+}
+
+/* Error and success message styling */
+.stAlert {
+    border-radius: 8px;
+    margin: 10px 0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -65,34 +131,52 @@ st.markdown("""
 # Initialize session state
 def initialize_session_state():
     """Initialize all session state variables"""
-    if 'rag_system' not in st.session_state:
-        st.session_state.rag_system = None
-    if 'processed_documents' not in st.session_state:
-        st.session_state.processed_documents = []
-    if 'qa_history' not in st.session_state:
-        st.session_state.qa_history = []
-    if 'system_initialized' not in st.session_state:
-        st.session_state.system_initialized = False
-    if 'collection_stats' not in st.session_state:
-        st.session_state.collection_stats = {'arabic': 0, 'english': 0}
+    session_vars = {
+        'rag_system': None,
+        'processed_documents': [],
+        'qa_history': [],
+        'system_initialized': False,
+        'collection_stats': {'doc': 0},
+        'current_session_id': None
+    }
+    
+    for var, default_value in session_vars.items():
+        if var not in st.session_state:
+            st.session_state[var] = default_value
+
+
 def feedback_ui(session_id):
+    """Display feedback UI with proper session handling"""
+    if not session_id:
+        st.warning("Session ID not available for feedback")
+        return
+        
     st.write("Was this answer helpful?")
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("👍 Like"):
-            success = update_feedback(session_id, "like")
-            if success:
-                st.success("Thanks for your feedback!")
-            else:
-                st.error("Failed to update feedback.")
+        if st.button("👍 Like", key=f"like_{session_id}"):
+            try:
+                success = update_feedback(session_id, "like")
+                if success:
+                    st.success("Thanks for your positive feedback!")
+                else:
+                    st.error("Failed to update feedback. Please try again.")
+            except Exception as e:
+                st.error(f"Error updating feedback: {str(e)}")
+                
     with col2:
-        if st.button("👎 Dislike"):
-            success = update_feedback(session_id, "dislike")
-            if success:
-                st.success("Thanks for your feedback!")
-            else:
-                st.error("Failed to update feedback.")
+        if st.button("👎 Dislike", key=f"dislike_{session_id}"):
+            try:
+                success = update_feedback(session_id, "dislike")
+                if success:
+                    st.success("Thanks for your feedback! We'll work on improving.")
+                else:
+                    st.error("Failed to update feedback. Please try again.")
+            except Exception as e:
+                st.error(f"Error updating feedback: {str(e)}")
+
+
 def validate_api_keys():
     """Validate required API keys"""
     required_keys = {
@@ -110,8 +194,12 @@ def validate_api_keys():
     
     return missing_keys
 
+
 def initialize_rag_system():
     """Initialize the LlamaIndex RAG system with error handling"""
+    if st.session_state.system_initialized and st.session_state.rag_system:
+        return st.session_state.rag_system
+        
     try:
         # Check if all required secrets are set
         missing_keys = validate_api_keys()
@@ -122,127 +210,75 @@ def initialize_rag_system():
         
         # Initialize the LlamaIndex RAG system
         rag_system = MultilingualRAGWithLlamaIndex(
-            llama_api_key=st.secrets["llama_cloud_api_key"],
-            qdrant_url=st.secrets["qdrant_url"],
-            qdrant_api_key=st.secrets["qdrant_api_key"],
-            groq_api_key=st.secrets["groq_api_key"],
-            embedding_model="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-            groq_model="llama3-70b-8192",
-            chunk_size=512,
-            chunk_overlap=50
-        )
+            llama_api_key=configs.LLAMA_CLOUD_API_KEY,
+            qdrant_url= configs.QDRANT_URL,
+            qdrant_api_key= configs.QDRANT_API_KEY,
+            groq_api_key= configs.GROQ_API_KEY,
+            groq_api_key_1= configs.GROQ_API_KEY_1,
+            embedding_model= configs.EMBEDDING_MODEL,
+            chunk_size= configs.CHUNK_SIZE,
+            chunk_overlap= configs.CHUNK_OVERLAP 
+        ) 
         
+        st.session_state.rag_system = rag_system
+        st.session_state.system_initialized = True
         st.success("✅ LlamaIndex RAG System initialized successfully!")
         return rag_system
         
     except Exception as e:
         st.error(f"❌ Failed to initialize RAG system: {str(e)}")
+        st.session_state.system_initialized = False
         return None
+
 
 def display_header():
     """Display the main header"""
     st.markdown("""
     <div class="main-header">
-        <h1>🌐 Multilingual RAG System - LlamaIndex</h1>
-        <p>Intelligent Document Processing & Question Answering for Arabic & English using LlamaIndex</p>
+        <h1>🌐 RAG System - LlamaIndex</h1>
+        <p>Multilingual Document Q&A System supporting Arabic and English</p>
     </div>
     """, unsafe_allow_html=True)
 
-# Display collection information with document counts
+
 def display_system_status():
     """Display system status in sidebar"""
     st.sidebar.markdown("## 🚀 System Status")
     
+    # System initialization status
     if st.session_state.system_initialized and st.session_state.rag_system:
-        st.sidebar.success("✅ LlamaIndex System Ready")
+        st.sidebar.success("✅ System Ready")
         
         # Display collection statistics
-        st.sidebar.markdown("### 📊 Document Collections")
-        col1, col2 = st.sidebar.columns(2)
-        with col1:
-            st.metric("Arabic Docs", st.session_state.collection_stats['arabic'])
-        with col2:
-            st.metric("English Docs", st.session_state.collection_stats['english'])
-            
-        # Display system info
-        st.sidebar.markdown("### ⚙️ System Info")
-        st.sidebar.info("**Engine**: LlamaIndex")
-        st.sidebar.info("**LLM**: Groq Llama3-70B")
-        st.sidebar.info("**Embeddings**: Multilingual MiniLM")
-        st.sidebar.info("**Vector DB**: Qdrant")
+        st.sidebar.markdown("### 📊 Document Statistics")
+        st.sidebar.metric("Documents Uploaded", st.session_state.collection_stats['doc'])
         
-        # Add collection management
-        st.sidebar.markdown("### 🗂️ Collection Management") 
+        # Display Q&A statistics
+        qa_count = len(st.session_state.qa_history)
+        st.sidebar.metric("Questions Asked", qa_count)
         
-        if st.sidebar.button("🔍 Check Collections"):
-            check_collections_status()
-            
-        if st.sidebar.button("🗑️ Clear Arabic Collection"):
-            clear_collection_confirm("arabic")
-            
-        if st.sidebar.button("🗑️ Clear English Collection"):
-            clear_collection_confirm("english")
-            
+        # System info
+        st.sidebar.markdown("### ℹ️ System Info")
+        st.sidebar.info("Framework: LlamaIndex")
+        st.sidebar.info("Vector Store: Qdrant")
+        st.sidebar.info("LLM: Groq Llama3-70B")
+        
     else:
-        st.sidebar.warning("⚠️ System Not Initialized")
-        if st.sidebar.button("🔄 Initialize System"):
-            with st.spinner("Initializing LlamaIndex RAG system..."):
-                rag_system = initialize_rag_system()
-                if rag_system:
-                    st.session_state.rag_system = rag_system
-                    st.session_state.system_initialized = True
-                    st.rerun()
-
-def check_collections_status():
-    """Check the actual status of collections in Qdrant"""
-    try:
-        collections = st.session_state.rag_system.qdrant_client.get_collections()
-        collection_names = [c.name for c in collections.collections]
-        
-        st.sidebar.markdown("**Qdrant Collections:**")
-        for name in collection_names:
-            if "arabic" in name.lower():
-                try:
-                    info = st.session_state.rag_system.qdrant_client.get_collection(name)
-                    st.sidebar.success(f"🟢 {name}: {info.points_count} points")
-                except:
-                    st.sidebar.warning(f"🟡 {name}: Status unknown")
-            elif "english" in name.lower():
-                try:
-                    info = st.session_state.rag_system.qdrant_client.get_collection(name)
-                    st.sidebar.success(f"🟢 {name}: {info.points_count} points")
-                except:
-                    st.sidebar.warning(f"🟡 {name}: Status unknown")
-    except Exception as e:
-        st.sidebar.error(f"Error checking collections: {e}")
-
-def clear_collection_confirm(language):
-    """Confirm and clear a specific collection"""
-    collection_name = f"{language}_docs_llamaindex"
-    
-    if st.sidebar.button(f"⚠️ Confirm Clear {language.title()}", key=f"confirm_clear_{language}"):
-        try:
-            st.session_state.rag_system.qdrant_client.delete_collection(collection_name)
-            st.session_state.collection_stats[language] = 0
-            
-            # Remove from processed documents
-            st.session_state.processed_documents = [
-                doc for doc in st.session_state.processed_documents 
-                if doc['language'] != ('ar' if language == 'arabic' else 'en')
-            ]
-            
-            st.sidebar.success(f"✅ Cleared {language} collection")
+        st.sidebar.error("❌ System Not Ready")
+        if st.sidebar.button("🔄 Retry Initialization"):
+            st.session_state.system_initialized = False
+            st.session_state.rag_system = None
             st.rerun()
-        except Exception as e:
-            st.sidebar.error(f"Error clearing collection: {e}")
+
 
 def display_document_upload():
     """Display document upload section"""
     st.markdown('<div class="upload-section">', unsafe_allow_html=True)
     st.markdown("## 📄 Document Upload & Processing")
     
-    if not st.session_state.system_initialized:
-        st.warning("⚠️ Please initialize the system first using the sidebar.")
+    # Check if system is ready
+    if not st.session_state.system_initialized or not st.session_state.rag_system:
+        st.warning("⚠️ System not initialized. Please check API keys and try again.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
     
@@ -250,19 +286,13 @@ def display_document_upload():
     
     with col1:
         uploaded_files = st.file_uploader(
-            "Upload PDF documents (Arabic or English)",
+            "Upload PDF documents",
             type=['pdf'],
-            accept_multiple_files=False,
-            help="Upload one or more PDF files. The system will automatically detect the language and extract structured content using LlamaIndex."
+            accept_multiple_files=True,  # Allow multiple files
+            help="Upload one or more PDF files (Arabic or English)."
         )
     
     with col2:
-        language_option = st.selectbox(
-            "Language Detection",
-            ["Force Arabic", "Force English"],
-            help="Choose how to handle language detection"
-        )
-        
         chunk_size = st.slider(
             "Chunk Size (tokens)",
             min_value=256,
@@ -281,55 +311,62 @@ def display_document_upload():
             help="Overlap between consecutive chunks"
         )
         
-        # Add option to append or replace documents
-        collection_mode = st.radio(
-            "Collection Mode",
-            ["Append to existing", "Replace collection"],
-            help="Choose whether to add documents to existing collection or replace it entirely"
-        )
+        # Collection mode (simplified)
+        collection_mode = "Append to existing"
     
+    # Process documents button
     if uploaded_files and st.button("🚀 Process Documents with LlamaIndex", type="primary"):
-        uploaded_files  = uploaded_files if isinstance(uploaded_files, list) else [uploaded_files]
-        process_documents_llamaindex(uploaded_files, language_option, chunk_size, chunk_overlap, collection_mode)
+        if not isinstance(uploaded_files, list):
+            uploaded_files = [uploaded_files]
+        process_documents_llamaindex(uploaded_files, chunk_size, chunk_overlap, collection_mode)
     
     # Display processed documents
     if st.session_state.processed_documents:
         st.markdown("### 📚 Processed Documents")
-        df = pd.DataFrame([
-            {
+        display_processed_documents_table()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def display_processed_documents_table():
+    """Display processed documents in a formatted table"""
+    try:
+        df_data = []
+        for doc in st.session_state.processed_documents:
+            df_data.append({
                 "Document": doc["name"],
                 "Language": "Arabic" if doc["language"] == "ar" else "English",
-                "LlamaIndex Documents": doc["documents"],
+                "LlamaIndex Documents": doc.get("documents", "N/A"),
                 "Collection": doc["collection"],
                 "Processing Time": f"{doc['processing_time']:.2f}s",
                 "Status": "✅ Indexed",
                 "Mode": doc.get("mode", "Unknown")
-            }
-            for doc in st.session_state.processed_documents
-        ])
-        st.dataframe(df, use_container_width=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+            })
+        
+        if df_data:
+            df = pd.DataFrame(df_data)
+            st.dataframe(df, use_container_width=True)
+    except Exception as e:
+        st.error(f"Error displaying documents table: {str(e)}")
 
-def process_documents_llamaindex(uploaded_files, language_option, chunk_size, chunk_overlap, collection_mode):
+
+def process_documents_llamaindex(uploaded_files, chunk_size, chunk_overlap, collection_mode):
     """Process uploaded documents using LlamaIndex pipeline"""
-    # Update chunking parameters
-    if st.session_state.rag_system:
+    if not st.session_state.rag_system:
+        st.error("RAG system not initialized")
+        return
+        
+    try:
+        # Update chunking parameters
         st.session_state.rag_system.node_parser.chunk_size = chunk_size
         st.session_state.rag_system.node_parser.chunk_overlap = chunk_overlap
-    
-    # Map language options
-    lang_map = {
-        "Force Arabic": "ar", 
-        "Force English": "en"
-    }
-    language = lang_map[language_option]
+    except AttributeError:
+        st.warning("Could not update chunk parameters. Using defaults.")
     
     progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # Keep track of processed documents in this batch by language
-    batch_stats = {'arabic': 0, 'english': 0}
+    processed_count = 0
     
     for i, uploaded_file in enumerate(uploaded_files):
         try:
@@ -344,64 +381,30 @@ def process_documents_llamaindex(uploaded_files, language_option, chunk_size, ch
                 tmp_file_path = tmp_file.name
             
             start_time = time.time()
-            
-            # Check if this is the first document of this language in this batch
-            # and if we should replace the collection
             document_name = uploaded_file.name.replace('.pdf', '')
             
-            # Detect language first if needed
-            if language == "auto":
-                # Quick language detection
-                extracted_sample, detected_lang = st.session_state.rag_system.extract_pdf(tmp_file_path, "auto")
-                actual_language = detected_lang
-            else:
-                actual_language = language
-            
-            # Determine if we need to clear the collection
-            should_clear_collection = False
-            if collection_mode == "Replace collection":
-                if actual_language == 'ar' and batch_stats['arabic'] == 0:
-                    should_clear_collection = True
-                elif actual_language == 'en' and batch_stats['english'] == 0:
-                    should_clear_collection = True
-            
-            # Temporarily modify the RAG system to control collection clearing
-            if should_clear_collection:
-                # This is the first document of this language in replace mode
-                index, detected_language = st.session_state.rag_system.process_pdf_to_llamaindex(
-                    pdf_path=tmp_file_path,
-                    language=actual_language,
-                    document_name=document_name
-                )
-                status_message = f"Created new collection for {uploaded_file.name}"
-            else:
-                # We need to append to existing collection
-                # We'll need to modify the process to append rather than replace
-                index, detected_language = process_pdf_append_mode(
-                    st.session_state.rag_system,
-                    tmp_file_path,
-                    actual_language,
-                    document_name
-                )
-                status_message = f"Added to existing collection: {uploaded_file.name}"
+            # Process document
+            index, detected_language = process_pdf_append_mode(
+                st.session_state.rag_system,
+                tmp_file_path,
+                "auto",  # Auto-detect language
+                document_name
+            )
             
             processing_time = time.time() - start_time
             
-            if index:
+            if index and detected_language:
                 # Determine collection name
                 collection_name = "arabic_docs_llamaindex" if detected_language == 'ar' else "english_docs_llamaindex"
                 
-                # Update batch stats
-                if detected_language == 'ar':
-                    batch_stats['arabic'] += 1
-                else:
-                    batch_stats['english'] += 1
+                # Count documents in index
+                doc_count = len(index.docstore.docs) if hasattr(index, 'docstore') and hasattr(index.docstore, 'docs') else "N/A"
                 
                 # Add to processed documents
                 doc_info = {
                     "name": uploaded_file.name,
                     "language": detected_language,
-                    "documents": len(index.docstore.docs) if hasattr(index, 'docstore') else "N/A",
+                    "documents": doc_count,
                     "collection": collection_name,
                     "processing_time": processing_time,
                     "processed_at": datetime.now().isoformat(),
@@ -409,81 +412,155 @@ def process_documents_llamaindex(uploaded_files, language_option, chunk_size, ch
                 }
                 st.session_state.processed_documents.append(doc_info)
                 
-                # Update collection stats only for new documents
-                if collection_mode == "Append to existing" or should_clear_collection:
-                    if detected_language == 'ar':
-                        if should_clear_collection:
-                            st.session_state.collection_stats['arabic'] = 1
-                        else:
-                            st.session_state.collection_stats['arabic'] += 1
-                    else:
-                        if should_clear_collection:
-                            st.session_state.collection_stats['english'] = 1
-                        else:
-                            st.session_state.collection_stats['english'] += 1
+                # Update collection stats
+                st.session_state.collection_stats['doc'] += 1
+                processed_count += 1
                 
-                st.success(f"✅ {status_message} "
+                st.success(f"✅ Processed {uploaded_file.name} "
                           f"({'Arabic' if detected_language == 'ar' else 'English'}) "
-                          f"- Indexed to {collection_name}")
+                          f"- Added to {collection_name}")
             else:
                 st.error(f"❌ Failed to process {uploaded_file.name}")
             
             # Clean up temporary file
-            os.unlink(tmp_file_path)
+            if os.path.exists(tmp_file_path):
+                os.unlink(tmp_file_path)
             
         except Exception as e:
             st.error(f"❌ Error processing {uploaded_file.name}: {str(e)}")
             continue
     
+    # Final progress update
     progress_bar.progress(1.0)
-    status_text.text("✅ All documents processed with LlamaIndex!")
-    time.sleep(1)
+    status_text.text(f"✅ Processing complete! {processed_count}/{len(uploaded_files)} documents processed successfully.")
+    
+    # Clear progress indicators after a short delay
+    time.sleep(2)
     progress_bar.empty()
     status_text.empty()
+
+def extract_chunck(rag_system,pdf_path,document_name,detected_language):
+              
+# Extract PDF content
+    extracted_data, detected_language = rag_system.extract_pdf(pdf_path, detected_language)
+    
+    if not extracted_data:
+        return None, None
+    print('extracting done')
+    # Convert to LlamaIndex Documents
+    documents = rag_system.convert_to_llamaindex_documents(
+        extracted_data, document_name, detected_language
+    )
+
+    
+    
+    if not documents:
+        return None, None
+    # # chunck documents 
+    # documents=rag_system.chunk_documents(
+    #     documents
+    # )
+
+    
+    
+
+    # save_dir = f"chunked_files/{document_name}"
+    # os.makedirs(save_dir, exist_ok=True)
+
+    # for i, doc in enumerate(documents):
+    #     chunk_filename = os.path.join(save_dir, f"chunk_{i+1}.txt")
+    #     with open(chunk_filename, "w", encoding="utf-8") as f:
+    #         f.write(doc.text)
+
+    # print(f"Saved {len(documents)} chunks to {save_dir}")
+    return documents
+  
+
+
 
 def process_pdf_append_mode(rag_system, pdf_path, language, document_name):
     """Process PDF in append mode without clearing existing collection"""
     try:
-        # Extract PDF content
-        extracted_data, detected_language = rag_system.extract_pdf(pdf_path, language)
+        # Detect language
+        print("detecting language")
+        detected_language = rag_system.detect_language_pdf(pdf_path)
+        print(detected_language)
         
-        if not extracted_data:
-            return None, None
-        
-        # Convert to LlamaIndex Documents
-        documents = rag_system.convert_to_llamaindex_documents(
-            extracted_data, document_name, detected_language
-        )
-        
-        # Determine collection name
         collection_name = "arabic_docs_llamaindex" if detected_language == 'ar' else "english_docs_llamaindex"
-        
-        # Load existing index or create new one
         existing_index = rag_system.load_existing_index(collection_name, detected_language)
-        
         if existing_index:
-            # Insert new documents into existing index
-            for doc in documents:
-                existing_index.insert(doc)
-            print(f"✅ Added {len(documents)} documents to existing {collection_name}")
-            return existing_index, detected_language
-        else:
-            # Create new index if none exists
-            index = rag_system.create_index(documents, collection_name, detected_language)
-            print(f"✅ Created new index {collection_name} with {len(documents)} documents")
-            return index, detected_language
+            # Scroll through Qdrant manually to check file_name
+            offset = 0
+            batch_size = 100
+            duplicate_found = False
+
+            while True:
+                # Unpack points correctly
+                points, _ = rag_system.qdrant_client.scroll(
+                    collection_name=collection_name,
+                    limit=batch_size,
+                    offset=offset
+                )
+
+                if not points:
+                    break
+
+                for point in points:
+                    if point.payload.get("file_name") == document_name:
+                        duplicate_found = True
+                        break
+                if duplicate_found:
+                    break
+
+                offset += batch_size
             
+            if duplicate_found:
+                print(f"The file '{document_name}' has already been loaded. Skipping insertion.")
+                return existing_index, detected_language
+            else:
+                # Extract chunks from PDF
+                documents = extract_chunck(rag_system, pdf_path, document_name, detected_language)
+                if not documents:
+                    print("No documents extracted")
+                    return None, detected_language
+                
+                # Add file_name to metadata
+                for doc in documents:
+                    if not doc.metadata:
+                        doc.metadata = {}
+                    doc.metadata["file_name"] = document_name
+                
+                
+                # Insert all chunks
+                for doc in documents:
+                    existing_index.insert(doc)
+                print(f"Inserted {len(documents)} chunks into existing collection.")
+                return existing_index, detected_language
+            
+        
+        
+        
+        
+        
+        # If no existing index, create new
+        else:
+            index = rag_system.create_index(documents, collection_name, detected_language)
+            print(f"Created new index with {len(documents)} chunks.")
+            return index, detected_language
+
     except Exception as e:
-        print(f"Error in append mode processing: {e}")
+        st.error(f"Error in PDF processing: {str(e)}")
         return None, None
+
+
 
 def display_qa_interface():
     """Display Q&A interface"""
     st.markdown('<div class="qa-section">', unsafe_allow_html=True)
     st.markdown("## 🤔 Ask Questions - LlamaIndex RAG")
     
-    if not st.session_state.system_initialized:
-        st.warning("⚠️ Please initialize the system first using the sidebar.")
+    if not st.session_state.system_initialized or not st.session_state.rag_system:
+        st.warning("⚠️ System not ready. Please initialize the system first.")
         st.markdown('</div>', unsafe_allow_html=True)
         return
     
@@ -500,7 +577,7 @@ def display_qa_interface():
             "Enter your question (Arabic or English):",
             height=100,
             placeholder="مثال: ما هي مبادئ معالجة البيانات الشخصية؟\nExample: What are the main data protection principles?",
-            help="Ask questions in Arabic or English. LlamaIndex will automatically detect the language and use appropriate retrieval."
+            key="question_input"
         )
     
     with col2:
@@ -510,135 +587,98 @@ def display_qa_interface():
             "Number of sources (top_k)",
             min_value=3,
             max_value=20,
-            value=10,
+            value=8,
             help="How many relevant chunks to retrieve from vector index"
-        )
-        
-        retrieval_method = st.selectbox(
-            "Retrieval Method",
-            ["Manual Retrieval + Custom Prompt"],
-            help="Choose between LlamaIndex query engine or manual retrieval with custom prompts"
-        )
-        
-        similarity_cutoff = st.slider(
-            "Similarity Cutoff",
-            min_value=0.0,
-            max_value=1.0,
-            value=0.1,
-            step=0.05,
-            help="Minimum similarity score for retrieved chunks (lower = more inclusive)"
-        )
-        
-        # Add debug mode
-        debug_mode = st.checkbox(
-            "Debug Mode",
-            help="Show retrieved chunk contents for debugging"
         )
     
     # Submit button
     if st.button("🔍 Get Answer with LlamaIndex", type="primary", disabled=not question.strip()):
-        get_answer_llamaindex(question, similarity_top_k, retrieval_method, similarity_cutoff, debug_mode)
+        get_answer_llamaindex(question, similarity_top_k)
     
     # Display Q&A history
     display_qa_history()
     
     st.markdown('</div>', unsafe_allow_html=True)
 
-def get_answer_llamaindex(question, similarity_top_k, retrieval_method, similarity_cutoff, debug_mode=False):
+
+def get_answer_llamaindex(question, similarity_top_k):
     """Get answer using LlamaIndex RAG system and log to Cosmos DB."""
     with st.spinner("🤖 LlamaIndex is thinking... Please wait"):
         try:
             start_time = time.time()
             
-          
-            if retrieval_method == "Manual Retrieval + Custom Prompt":
-                response = st.session_state.rag_system.ask_question_with_manual_retrieval(
-                    query=question,
-                    similarity_top_k=similarity_top_k
-                )
-            else:
-                response = st.session_state.rag_system.ask_question(
-                    query=question,
-                    similarity_top_k=similarity_top_k
-                )
+            # Get response from RAG system
             
-
+            response = st.session_state.rag_system.ask_question(
+                    query=question,
+                    similarity_top_k=similarity_top_k
+                )
           
 
-            # --- Full Processing Time ---
             processing_time_ms = (time.time() - start_time) * 1000
+            session_id = str(uuid.uuid4())
 
-            # --- Session History (for UI) ---
+            # Session history entry for UI
             qa_entry_ui = {
                 "question": question,
                 "answer": response.answer,
-                "language": response.query_language,
-                "confidence": response.confidence_score,
-                "sources": response.sources if response.sources else [],
-                "retrieved_chunks": response.retrieved_chunks,
-                "processing_time": processing_time_ms / 1000, 
+                "language": getattr(response, 'query_language', 'unknown'),
+                "confidence": getattr(response, 'confidence_score', 0.0),
+                "sources": getattr(response, 'sources', []),
+                "retrieved_chunks": getattr(response, 'retrieved_chunks', []),
+                "processing_time": processing_time_ms / 1000,
                 "timestamp": datetime.now().isoformat(),
-                "method": retrieval_method,
-                "top_k": similarity_top_k
-            }
-            st.session_state.qa_history.insert(0, qa_entry_ui)
-
-            # --- LLMOps Log for Cosmos DB ---
-            qa_log_entry = {
-                # User Query Info
-                "question": question,
-                "language": response.query_language,
-                "timestamp": datetime.utcnow().isoformat(),
-
-                # Retrieval Info
-                "retrieval_method": retrieval_method,
-                "retrieved_chunks": response.retrieved_chunks,
-                "similarity_scores": [chunk.get('score', None) for chunk in response.retrieved_chunks],
-                "sources": response.sources if response.sources else [],
                 "top_k": similarity_top_k,
-                "retrieval_latency_ms": response.retrieval_latency,
-
-                # LLM Generation Info
-                "answer": response.answer,
-                "llm_model": "Groq-Llama-3-70B",
-                "generation_latency_ms":response.llm_latency,
-                "confidence": response.confidence_score,
-
-                # Feedback & Evaluation
-                "feedback": None,
-                "processing_time_ms": round(processing_time_ms, 2),
-
-                # Metadata for LLMOps
-                "session_id": str(uuid.uuid4()),
-                "app_version": "v1.0.0",
-                "embedding_model_version": "text-embedding-multilingual-v2",
-                "prompt_version": "rag_template_v3"
+                "session_id": session_id
             }
             
-            st.session_state["current_session_id"] =qa_log_entry["session_id"]
+            # Add to history
+            st.session_state.qa_history.insert(0, qa_entry_ui)
+            st.session_state.current_session_id = session_id
 
-            store_logs_ToCosmosDB(qa_log_entry)
+            # Log to Cosmos DB
+            try:
+                qa_log_entry = {
+                    "question": question,
+                    "language": getattr(response, 'query_language', 'unknown'),
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "retrieved_chunks": getattr(response, 'retrieved_chunks', []),
+                    "similarity_scores": [chunk.get('score', None) for chunk in getattr(response, 'retrieved_chunks', [])],
+                    "sources": getattr(response, 'sources', []),
+                    "top_k": similarity_top_k,
+                    "retrieval_latency_ms": getattr(response, 'retrieval_latency', 0),
+                    "answer": response.answer,
+                    "llm_model": "Groq-Llama-3-70B",
+                    "generation_latency_ms": getattr(response, 'llm_latency', 0),
+                    "confidence": getattr(response, 'confidence_score', 0.0),
+                    "feedback": None,
+                    "processing_time_ms": round(processing_time_ms, 2),
+                    "session_id": session_id,
+                    "app_version": "v1.0.0",
+                    "embedding_model_version": "text-embedding-multilingual-v2",
+                    "prompt_version": "rag_template_v3"
+                }
+                # Store to db 
+                store_logs_ToCosmosDB(qa_log_entry)
 
-            
 
-            # --- Display Answer in UI ---
+            except Exception as log_error:
+                st.warning(f"Logging failed: {str(log_error)}")
+
+            # Display answer
             display_answer_llamaindex(qa_entry_ui)
-          
-
-            feedback_ui(st.session_state["current_session_id"])
+            
+            # Show feedback UI
+            feedback_ui(session_id)
 
         except Exception as e:
             st.error(f"❌ Error getting answer from LlamaIndex: {str(e)}")
-            import traceback
-            st.error(f"Traceback: {traceback.format_exc()}")
 
 
 def display_answer_llamaindex(qa_entry):
     """Display a Q&A entry with LlamaIndex-specific formatting"""
-    language = qa_entry["language"]
+    language = qa_entry.get("language", "unknown")
     is_arabic = language == "ar"
-    
-    # Apply RTL styling for Arabic
     text_class = "rtl-text" if is_arabic else ""
     
     st.markdown("---")
@@ -650,47 +690,35 @@ def display_answer_llamaindex(qa_entry):
     # Answer
     st.markdown("### 💡 Answer")
     st.markdown(
-    f"""
-    <div class="answer-box" style="padding: 15px; border-radius: 8px;">
-        {qa_entry['answer']}
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-
+        f"""
+        <div class="answer-box {text_class}">
+            {qa_entry['answer']}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     
     # Metrics
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Confidence", f"{qa_entry['confidence']:.3f}")
+        st.metric("Confidence", f"{qa_entry.get('confidence', 0):.3f}")
     with col2:
-        st.metric("Sources", len(qa_entry['sources']))
+        st.metric("Sources", len(qa_entry.get('sources', [])))
     with col3:
-        st.metric("Retrieved Chunks", len(qa_entry['retrieved_chunks']))
+        st.metric("Retrieved Chunks", len(qa_entry.get('retrieved_chunks', [])))
     with col4:
-        st.metric("Response Time", f"{qa_entry['processing_time']:.2f}s")
+        st.metric("Response Time", f"{qa_entry.get('processing_time', 0):.2f}s")
     with col5:
-        st.metric("Method", qa_entry.get('method', 'Standard')[:8] + "...")
+        method_short = qa_entry.get('method', 'Standard')[:8] + ("..." if len(qa_entry.get('method', '')) > 8 else "")
+        st.metric("Method", method_short)
     
     # Sources
-    if qa_entry['sources']:
+    sources = qa_entry.get('sources', [])
+    if sources:
         st.markdown("### 📚 Sources")
-        for i, source in enumerate(qa_entry['sources'], 1):
+        for i, source in enumerate(sources, 1):
             st.markdown(f'<div class="source-box">📄 {i}. {source}</div>', unsafe_allow_html=True)
-    
-    # Detailed chunk information (expandable)
-    with st.expander("🔍 View LlamaIndex Retrieved Chunks Details"):
-        for i, chunk in enumerate(qa_entry['retrieved_chunks'], 1):
-            st.markdown(f"**Chunk {i}** - Similarity Score: {chunk['score']:.3f}")
-            st.markdown(f"- **Document**: {chunk.get('document_name', 'N/A')}")
-            st.markdown(f"- **Page**: {chunk.get('page_number', 'N/A')}")
-            st.markdown(f"- **Block Type**: {chunk.get('block_type', 'N/A')}")
-            st.markdown(f"- **Language**: {chunk.get('language', 'N/A')}")
-            
-            # Show content preview
-            content_preview = chunk['content'][:300] + "..." if len(chunk['content']) > 300 else chunk['content']
-            st.markdown(f'<div class="{text_class}"><small><strong>Content:</strong><br>{content_preview}</small></div>', unsafe_allow_html=True)
-            st.markdown("---")
+
 
 def display_qa_history():
     """Display Q&A history"""
@@ -698,15 +726,18 @@ def display_qa_history():
         st.markdown("### 📈 Recent Questions & Answers")
         
         # Add clear history button
-        if st.button("🗑️ Clear History"):
-            st.session_state.qa_history = []
-            st.rerun()
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            if st.button("🗑️ Clear History"):
+                st.session_state.qa_history = []
+                st.rerun()
         
         # Show recent entries (limit to 3 for performance)
-        for qa_entry in st.session_state.qa_history[:3]:
+        for idx, qa_entry in enumerate(st.session_state.qa_history[:3]):
             question_preview = qa_entry['question'][:50] + "..." if len(qa_entry['question']) > 50 else qa_entry['question']
             with st.expander(f"Q: {question_preview} (Method: {qa_entry.get('method', 'Standard')})"):
                 display_answer_llamaindex(qa_entry)
+
 
 def display_analytics():
     """Display analytics and statistics"""
@@ -720,116 +751,123 @@ def display_analytics():
     if st.session_state.processed_documents:
         st.markdown("### 📚 Document Processing Statistics")
         
-        # Create charts
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Language distribution pie chart
-            lang_counts = {'Arabic': st.session_state.collection_stats['arabic'], 
-                          'English': st.session_state.collection_stats['english']}
+        try:
+            doc_df = pd.DataFrame(st.session_state.processed_documents)
             
-            if any(lang_counts.values()):
-                fig_pie = px.pie(
-                    values=list(lang_counts.values()),
-                    names=list(lang_counts.keys()),
-                    title="Documents by Language (LlamaIndex Collections)"
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Language distribution
+                lang_counts = doc_df['language'].value_counts()
+                lang_counts.index = ['Arabic' if x == 'ar' else 'English' for x in lang_counts.index]
+                
+                fig_lang = px.pie(
+                    values=lang_counts.values,
+                    names=lang_counts.index,
+                    title="Documents by Language"
                 )
-                st.plotly_chart(fig_pie, use_container_width=True)
-        
-        with col2:
-            # Processing time chart
-            if st.session_state.processed_documents:
-                doc_df = pd.DataFrame(st.session_state.processed_documents)
+                st.plotly_chart(fig_lang, use_container_width=True)
+            
+            with col2:
+                # Processing time chart
                 fig_bar = px.bar(
                     doc_df,
                     x='name',
                     y='processing_time',
                     color='language',
-                    title="LlamaIndex Processing Time by Document",
+                    title="Processing Time by Document",
                     labels={'processing_time': 'Time (seconds)', 'name': 'Document'}
                 )
                 fig_bar.update_layout(xaxis_tickangle=45)
                 st.plotly_chart(fig_bar, use_container_width=True)
+                
+        except Exception as e:
+            st.error(f"Error displaying document analytics: {str(e)}")
     
     # Q&A statistics
     if st.session_state.qa_history:
         st.markdown("### 🤔 Question & Answer Statistics")
         
-        qa_df = pd.DataFrame(st.session_state.qa_history)
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            avg_confidence = qa_df['confidence'].mean()
-            st.metric("Average Confidence", f"{avg_confidence:.3f}")
-        
-        with col2:
-            avg_response_time = qa_df['processing_time'].mean()
-            st.metric("Avg Response Time", f"{avg_response_time:.2f}s")
-        
-        with col3:
-            total_questions = len(qa_df)
-            st.metric("Total Questions", total_questions)
-        
-        with col4:
-            avg_chunks = qa_df['retrieved_chunks'].apply(len).mean()
-            st.metric("Avg Retrieved Chunks", f"{avg_chunks:.1f}")
-        
-        # Additional analytics
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            # Language distribution for questions
-            qa_lang_counts = qa_df['language'].value_counts()
-            qa_lang_labels = ['Arabic' if lang == 'ar' else 'English' for lang in qa_lang_counts.index]
+        try:
+            qa_df = pd.DataFrame(st.session_state.qa_history)
             
-            fig_qa_pie = px.pie(
-                values=qa_lang_counts.values,
-                names=qa_lang_labels,
-                title="Questions by Language"
-            )
-            st.plotly_chart(fig_qa_pie, use_container_width=True)
-        
-        with col2:
-            # Confidence score distribution
-            fig_conf = px.histogram(
-                qa_df,
-                x='confidence',
-                title="Confidence Score Distribution",
-                nbins=10
-            )
-            st.plotly_chart(fig_conf, use_container_width=True)
-        
-        with col3:
-            # Method usage if available
-            if 'method' in qa_df.columns:
-                method_counts = qa_df['method'].value_counts()
-                fig_method = px.bar(
-                    x=method_counts.index,
-                    y=method_counts.values,
-                    title="Retrieval Method Usage"
-                )
-                st.plotly_chart(fig_method, use_container_width=True)
+            # Summary metrics
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                avg_confidence = qa_df['confidence'].mean() if 'confidence' in qa_df.columns else 0
+                st.metric("Average Confidence", f"{avg_confidence:.3f}")
+            
+            with col2:
+                avg_response_time = qa_df['processing_time'].mean() if 'processing_time' in qa_df.columns else 0
+                st.metric("Avg Response Time", f"{avg_response_time:.2f}s")
+            
+            with col3:
+                total_questions = len(qa_df)
+                st.metric("Total Questions", total_questions)
+            
+            with col4:
+                if 'retrieved_chunks' in qa_df.columns:
+                    avg_chunks = qa_df['retrieved_chunks'].apply(lambda x: len(x) if isinstance(x, list) else 0).mean()
+                    st.metric("Avg Retrieved Chunks", f"{avg_chunks:.1f}")
+                else:
+                    st.metric("Avg Retrieved Chunks", "N/A")
+            
+            # Additional charts
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Confidence score distribution
+                if 'confidence' in qa_df.columns:
+                    fig_conf = px.histogram(
+                        qa_df,
+                        x='confidence',
+                        title="Confidence Score Distribution",
+                        nbins=10
+                    )
+                    st.plotly_chart(fig_conf, use_container_width=True)
+            
+            with col2:
+                # Language distribution in questions
+                if 'language' in qa_df.columns:
+                    lang_counts = qa_df['language'].value_counts()
+                    lang_counts.index = ['Arabic' if x == 'ar' else 'English' if x == 'en' else 'Unknown' for x in lang_counts.index]
+                    
+                    fig_lang_qa = px.bar(
+                        x=lang_counts.index,
+                        y=lang_counts.values,
+                        title="Questions by Language"
+                    )
+                    st.plotly_chart(fig_lang_qa, use_container_width=True)
+                    
+        except Exception as e:
+            st.error(f"Error displaying Q&A analytics: {str(e)}")
+
 
 def display_settings():
     """Display system settings and configuration"""
-    st.markdown("## ⚙️ LlamaIndex System Settings")
+    st.markdown("## ⚙️ System Settings & Configuration")
     
     # API Key status
     st.markdown("### 🔑 API Configuration")
-    api_keys = {
-        'Qdrant URL': st.secrets.get("qdrant_url", "Not set"),
-        'Qdrant API Key': "Set" if st.secrets.get("qdrant_api_key") else "Not set",
-        'Groq API Key': "Set" if st.secrets.get("groq_api_key") else "Not set", 
-        'Groq API Key (Secondary)': "Set" if st.secrets.get("groq_api_key_1") else "Not set",
-        'LlamaCloud API Key': "Set" if st.secrets.get("llama_cloud_api_key") else "Not set"
-    }
     
-    for key, status in api_keys.items():
-        if "Not set" in status:
-            st.error(f"❌ {key}: {status}")
-        else:
-            st.success(f"✅ {key}: {status}")
+    try:
+        api_keys = {
+            'Qdrant URL': st.secrets.get("qdrant_url", "Not set"),
+            'Qdrant API Key': "✅ Set" if st.secrets.get("qdrant_api_key") else "❌ Not set",
+            'Groq API Key': "✅ Set" if st.secrets.get("groq_api_key") else "❌ Not set", 
+            'Groq API Key (Secondary)': "✅ Set" if st.secrets.get("groq_api_key_1") else "❌ Not set",
+            'LlamaCloud API Key': "✅ Set" if st.secrets.get("llama_cloud_api_key") else "❌ Not set"
+        }
+        
+        for key, status in api_keys.items():
+            if "Not set" in status:
+                st.error(f"{key}: {status}")
+            else:
+                st.success(f"{key}: {status}")
+                
+    except Exception as e:
+        st.error(f"Error checking API keys: {str(e)}")
     
     # System configuration
     st.markdown("### 🔧 LlamaIndex Configuration")
@@ -837,102 +875,127 @@ def display_settings():
         col1, col2 = st.columns(2)
         
         with col1:
-            st.info(f"**Embedding Model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-            st.info(f"**LLM Model**: Groq Llama3-70B-8192")
-            st.info(f"**Vector Store**: Qdrant")
+            st.info("**Embedding Model**: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+            st.info("**LLM Model**: Groq Llama3-70B-8192")
+            st.info("**Vector Store**: Qdrant")
         
         with col2:
-            st.info(f"**Chunk Size**: {st.session_state.rag_system.node_parser.chunk_size}")
-            st.info(f"**Chunk Overlap**: {st.session_state.rag_system.node_parser.chunk_overlap}")
-            st.info(f"**Framework**: LlamaIndex")
+            try:
+                chunk_size = getattr(st.session_state.rag_system.node_parser, 'chunk_size', 'N/A')
+                chunk_overlap = getattr(st.session_state.rag_system.node_parser, 'chunk_overlap', 'N/A')
+                st.info(f"**Chunk Size**: {chunk_size}")
+                st.info(f"**Chunk Overlap**: {chunk_overlap}")
+                st.info("**Framework**: LlamaIndex")
+            except AttributeError:
+                st.info("**Chunk Size**: N/A")
+                st.info("**Chunk Overlap**: N/A")
+                st.info("**Framework**: LlamaIndex")
+    else:
+        st.warning("System not initialized - configuration unavailable")
     
-    # Collection Information
-    st.markdown("### 📊 Collection Information")
-    if st.session_state.rag_system:
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("**Arabic Collection**")
-            st.code("arabic_docs_llamaindex")
-            
-        with col2:
-            st.markdown("**English Collection**")
-            st.code("english_docs_llamaindex")
-    
-    # Export/Import settings
+    # Data Management
     st.markdown("### 💾 Data Management")
-    col1, col2, col3 = st.columns(3)
+    
+    col1, col2 = st.columns(2)
     
     with col1:
+        # Export functionality
         if st.button("📥 Export Q&A History"):
             if st.session_state.qa_history:
-                export_data = {
-                    "qa_history": st.session_state.qa_history,
-                    "processed_documents": st.session_state.processed_documents,
-                    "system_type": "llamaindex",
-                    "exported_at": datetime.now().isoformat()
-                }
-                
-                st.download_button(
-                    label="Download JSON",
-                    data=json.dumps(export_data, indent=2, ensure_ascii=False),
-                    file_name=f"llamaindex_rag_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                    mime="application/json"
-                )
+                try:
+                    export_data = {
+                        "qa_history": st.session_state.qa_history,
+                        "processed_documents": st.session_state.processed_documents,
+                        "system_type": "llamaindex",
+                        "exported_at": datetime.now().isoformat(),
+                        "total_questions": len(st.session_state.qa_history),
+                        "total_documents": len(st.session_state.processed_documents)
+                    }
+                    
+                    json_data = json.dumps(export_data, indent=2, ensure_ascii=False)
+                    
+                    st.download_button(
+                        label="📄 Download JSON",
+                        data=json_data,
+                        file_name=f"llamaindex_rag_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                        mime="application/json",
+                        help="Download your Q&A history and document information"
+                    )
+                    st.success("Export ready for download!")
+                except Exception as e:
+                    st.error(f"Export failed: {str(e)}")
             else:
                 st.warning("No history to export")
     
     with col2:
-        if st.button("🗑️ Clear All Data"):
-            if st.button("⚠️ Confirm Clear All", type="secondary"):
-                st.session_state.processed_documents = []
+        # Clear data functionality
+        if st.button("🗑️ Clear All Data", type="secondary"):
+            if st.button("⚠️ Confirm Clear All", type="primary"):
                 st.session_state.qa_history = []
-                st.session_state.collection_stats = {'arabic': 0, 'english': 0}
-                st.success("✅ All data cleared")
+                st.session_state.processed_documents = []
+                st.session_state.collection_stats = {'doc': 0}
+                st.success("All data cleared!")
                 st.rerun()
     
-    with col3:
-        if st.button("🔄 Reset System"):
-            if st.button("⚠️ Confirm Reset", type="secondary"):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.success("✅ System reset")
-                st.rerun()
+    # System Information
+    st.markdown("### ℹ️ System Information")
+    
+    system_info = {
+        "Streamlit Version": st.__version__,
+        "Current Time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "System Status": "✅ Ready" if st.session_state.system_initialized else "❌ Not Ready",
+        "Documents Processed": len(st.session_state.processed_documents),
+        "Questions Asked": len(st.session_state.qa_history),
+        "Collections": len(set([doc['collection'] for doc in st.session_state.processed_documents])) if st.session_state.processed_documents else 0
+    }
+    
+    for key, value in system_info.items():
+        st.text(f"{key}: {value}")
+
 
 def main():
     """Main application function"""
-    # Initialize session state
-    initialize_session_state()
-    
-    # Display header
-    display_header()
-    
-    # Sidebar
-    display_system_status()
-    
-    # Main content tabs
-    tab1, tab2, tab3, tab4 = st.tabs(["📄 Documents", "🤔 Q&A", "📊 Analytics", "⚙️ Settings"])
-    
-    with tab1:
-        display_document_upload()
-    
-    with tab2:
-        display_qa_interface()
-    
-    with tab3:
-        display_analytics()
-    
-    with tab4:
-        display_settings()
-    
-    # Footer
-    st.markdown("---")
-    st.markdown(
-        "<div style='text-align: center; color: #666; padding: 1rem;'>"
-        "🌐 Multilingual RAG System with LlamaIndex | Built with Streamlit | Supports Arabic & English"
-        "</div>",
-        unsafe_allow_html=True
-    )
+    try:
+        # Initialize session state
+        initialize_session_state()
+        
+        # Initialize RAG system
+        initialize_rag_system()
+        
+        # Display header
+        display_header()
+        
+        # Sidebar
+        display_system_status()
+        
+        # Main content tabs
+        tab1, tab2, tab3, tab4 = st.tabs(["📄 Documents", "🤔 Q&A", "📊 Analytics", "⚙️ Settings"])
+        
+        with tab1:
+            display_document_upload()
+        
+        with tab2:
+            display_qa_interface()
+        
+        with tab3:
+            display_analytics()
+        
+        with tab4:
+            display_settings()
+        
+        # Footer
+        st.markdown("---")
+        st.markdown(
+            "<div style='text-align: center; color: #666; padding: 1rem;'>"
+            "🌐 Multilingual RAG System with LlamaIndex | Built with Streamlit | Supports Arabic & English"
+            "</div>",
+            unsafe_allow_html=True
+        )
+        
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+        st.error("Please refresh the page and try again.")
+
 
 if __name__ == "__main__":
     main()
